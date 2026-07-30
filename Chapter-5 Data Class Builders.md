@@ -1250,3 +1250,56 @@ match point:
 
 ---
 
+## Chapter Summary: Data Class Builders
+
+### 1. The Core Purpose
+
+Python provides several tools to quickly generate classes whose main purpose is holding data without requiring repetitive, manual dunder method implementations (`__init__`, `__repr__`, `__eq__`, etc.).
+
+---
+
+### 2. Summary of the Three Main Builders
+
+1. **`collections.namedtuple`**
+
+    - **Base Class:** Subclass of `tuple`.
+    
+    - **Key Features:** Lightweight, memory-efficient, immutable records accessible by attribute name or numerical index.
+    
+    - **Best For:** Simple data containers without complex logic or type annotation needs.
+
+2. **`typing.NamedTuple`**
+
+    - **Base Class:** Subclass of `tuple`.
+    
+    - **Key Features:** Combines tuple-backed immutability with type annotations, class definition syntax, default values, and standard method definitions.
+    
+    - **Best For:** Immutable schemas that need type hints and index/unpacking compatibility.
+
+3. **`dataclasses.dataclass`**
+
+    - **Base Class:** Standard Python object (does not inherit from `tuple` or `dict`).
+    
+    - **Key Features:** Highly customizable decorator providing mutable attributes by default (can be frozen), custom field configurations via `field()`, post-initialization hooks (`__post_init__`), and integration with structural pattern matching.
+    
+    - **Best For:** Rich domain models, mutable records, multi-field schemas, and object-oriented data containers.
+    
+
+---
+
+### 3. Key Concepts & Options Quick Reference
+
+- **Type Annotations as Schema Metadata:** Type hints (PEP 526) in data classes are inspected at import time to generate instance fields. However, CPython **never enforces types at runtime**.
+
+- **Mutable Field Defaults:** Never assign mutable defaults directly (e.g., `x: list = []`). Always use `field(default_factory=list)` to avoid shared state across instances.
+
+- **`__post_init__`:** Used to run validation or compute derived fields immediately after the generated `__init__` constructor runs.
+
+- **Init-Only Variables (`InitVar`):** Declares parameters that are passed into `__init__` and `__post_init__` for calculation or setup, but discarded instead of being saved as permanent instance fields.
+
+- **Class Attributes (`ClassVar`):** Prevents shared class-level variables from being mistaken by `@dataclass` as instance fields.
+
+- **Pattern Matching Integration:** Data classes and `NamedTuple` instances support positional structural pattern matching via auto-generated `__match_args__`.
+
+---
+
