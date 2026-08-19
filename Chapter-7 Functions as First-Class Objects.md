@@ -186,3 +186,262 @@ Author Luciano Ramalho (and many Python style guides) recommends a strict limit 
 Since Python functions are first-class objects, a locally defined `def` function is just as valid to pass around as a `lambda`, but significantly easier to read, name, and debug.
 
 ---
+## 1. The Nine Flavors of Callable Objects
+
+In Python, the call operator `()` can be applied to more than just standard functions. Any object that supports this operator is considered **callable**.
+
+To check if an object is callable, you can use the built-in `callable()` function. As of Python 3.9, the Python Data Model defines exactly nine flavors of callable objects:
+
+|**Callable Type**|**Description**|
+|---|---|
+|**1. User-defined functions**|Created with `def` statements or `lambda` expressions.|
+|**2. Built-in functions**|Functions implemented in C (for CPython), such as `len` or `time.strftime`.|
+|**3. Built-in methods**|Methods implemented in C, such as `dict.get`.|
+|**4. Methods**|Functions defined in the body of a class.|
+|**5. Classes**|When invoked, a class runs `__new__` to create a new instance, then `__init__` to initialize it, and finally returns the instance. (No `new` keyword is used in Python).|
+|**6. Class instances**|If a class implements the `__call__` special method, its instances can be invoked exactly like functions.|
+|**7. Generator functions**|Functions or methods that use the `yield` keyword. When called, they return a generator object rather than executing immediately.|
+|**8. Native coroutines**|Functions defined with `async def`. When called, they return a coroutine object.|
+|**9. Asynchronous generators**|Functions defined with `async def` that also contain `yield`. They return an asynchronous generator.|
+
+> **Takeaway:** The safest way to determine if you can "call" an object `obj()` is to use `callable(obj)`.
+---
+## 2. User-Defined Callable Types
+
+Because functions are first-class objects in Python, the reverse is also true: **arbitrary Python objects can behave like functions.**
+
+You can make any custom object callable simply by implementing the **`__call__`** special method in its class.
+### Why Make an Object Callable?
+
+Implementing `__call__` is a fantastic way to create **stateful functions**—function-like objects that need to remember data or internal state between calls.
+
+### Code Anatomy (The `BingoCage` Example)
+
+A classic example is a "Bingo Cage." It needs to hold a pool of items, shuffle them, and yield one random item every time it is "called", keeping track of what has already been drawn.
+
+```python
+import random
+
+class BingoCage:
+    def __init__(self, items):
+        # Create a local copy to avoid modifying the original list
+        self._items = list(items)  
+        random.shuffle(self._items)
+        
+    def __call__(self):
+        try:
+            return self._items.pop()
+        except IndexError:
+            raise LookupError('pick from empty BingoCage')
+```
+
+#### How it Behaves:
+
+```python
+# 1. Instantiate the object (calls __init__)
+>>> bingo = BingoCage(range(3))
+
+# 2. Call the instance directly! (calls __call__)
+>>> bingo()
+1
+>>> bingo()
+2
+>>> bingo()
+0
+
+# 3. Check if the instance is callable
+>>> callable(bingo)
+True
+```
+
+### The Alternative: Closures
+
+If you need a function that maintains internal state across calls, your two main choices in Python are:
+
+1. A custom class with `__call__` (as shown above).
+2. A **closure** (a nested function that captures variables from its enclosing scope).
+
+We will explore closures deeply in Chapter 9, but for complex state management, a class with `__call__` is often much easier to read and debug.
+
+---
+## 1. From Positional to Keyword-Only Parameters
+
+Python functions have an incredibly flexible parameter handling mechanism. One of its best features is the ability to define **keyword-only parameters**—arguments that _must_ be passed by their name, rather than their position.
+
+This feature (introduced in Python 3) is excellent for creating clean, readable APIs, especially for functions that take optional boolean flags or configuration settings.
+
+### How to Define Keyword-Only Parameters
+
+To define keyword-only arguments, you place them _after_ a `*` (which catches excess positional arguments) or a bare `*` in the function signature.
+
+#### Code Anatomy (Example 7-9 & 7-10 concepts)
+
+```python
+# The bare '*' means: "Don't accept any more positional arguments after this point."
+def tag(name, *content, class_=None, **attrs):
+    """Generate one or more HTML tags"""
+    pass
+
+# VALID: 'class_' must be passed as a keyword.
+tag('br', class_='my-class')
+
+# INVALID: Passing it positionally raises an error.
+# tag('br', 'my-class') -> 'my-class' gets swallowed by *content!
+```
+
+**Key Takeaways:**
+
+- If you want to specify keyword-only arguments without supporting arbitrary positional arguments (`*args`), just put a bare `*` in the signature: `def f(a, *, b):`
+
+- In `def f(a, *, b):`, `b` is keyword-only. You must call it like `f(1, b=2)`.
+
+---
+## 2. Positional-Only Parameters (`/`)
+
+While Python 3 gave us keyword-only parameters, **Python 3.8** introduced the exact opposite: **Positional-Only Parameters** (PEP 570).
+
+Many built-in functions in Python (implemented in C) have always been positional-only. For example, `divmod(x, y)` works, but `divmod(x=10, y=3)` throws a `TypeError`. Now, you can enforce this same behavior in your own custom Python functions.
+
+### How to Define Positional-Only Parameters
+
+To define positional-only parameters, place a forward slash (`/`) in the parameter list. All parameters appearing _before_ the `/` cannot be passed by keyword.
+
+#### Code Anatomy
+
+```python
+def f(a, b, /, c, d, *, e, f):
+    print(a, b, c, d, e, f)
+```
+
+Here is how the rules break down for the function above:
+
+1. **`a` and `b` (Before `/`):** Must be passed **positionally**. `f(1, 2, ...)` is valid; `f(a=1, b=2, ...)` is an error.
+2. **`c` and `d` (Between `/` and `*`):** Standard Python behavior. Can be passed **positionally OR by keyword**.
+3. **`e` and `f` (After `*`):** Must be passed by **keyword only**.
+
+### Why Use Positional-Only Parameters?
+
+1. **API Evolution:** If a parameter name has no semantic meaning (e.g., `x` and `y` in a math function), positional-only prevents users from writing `my_func(x=10)`. This gives you the freedom to rename the internal parameter in the future without breaking user code.
+
+2. **Accepting Arbitrary kwargs:** It allows your function to accept a `**kwargs` dictionary that might contain a key matching one of your parameter names, completely avoiding name collisions.
+
+---
+### Summary Checklist
+
+|**Syntax Symbol**|**What it dictates**|**Example Signature**|**How it must be called**|
+|---|---|---|---|
+|**`/`**|Everything _before_ it is **Positional-Only**.|`def f(x, /):`|`f(1)`|
+|**(None)**|Standard arguments can be Positional or Keyword.|`def f(x):`|`f(1)` or `f(x=1)`|
+|**`*`**|Everything _after_ it is **Keyword-Only**.|`def f(*, x):`|`f(x=1)`|
+
+---
+## 1. The `operator` Module
+
+Although Python is not a purely functional language, it provides powerful tools to write code in a functional style. Often, functional programming requires passing simple operations (like addition, multiplication, or item access) as function arguments to higher-order functions like `map`, `filter`, or `reduce`.
+
+Instead of writing verbose and repetitive `lambda` functions for these basic operations, Python provides the **`operator`** module, which includes C-optimized function equivalents for dozens of arithmetic, logical, and sequence operators.
+
+
+### A. Replacing Math Lambdas
+
+Suppose you want to compute a factorial using `reduce`.
+
+With a lambda, you'd write:
+
+```python
+from functools import reduce
+
+def factorial(n):
+    return reduce(lambda a, b: a * b, range(1, n + 1))
+```
+
+Using the `operator` module, you can replace the anonymous `lambda a, b: a * b` with `operator.mul`:
+
+```python
+from functools import reduce
+from operator import mul
+
+def factorial(n):
+    return reduce(mul, range(1, n + 1))
+```
+
+This is shorter, more readable, and faster since `operator.mul` is implemented in C.
+
+### B. Extracting Data: `itemgetter` and `attrgetter`
+
+The `operator` module also provides function factories that are incredibly useful for sorting or extracting data from sequences and objects.
+
+- **`itemgetter(item)`:** Creates a function that extracts items using the `[]` operator. Commonly used to sort a list of tuples or dictionaries by a specific index or key.
+
+```python
+ from operator import itemgetter
+
+metro_data = [('Tokyo', 'JP', 36.933), ('Delhi NCR', 'IN', 21.935)]
+ 
+# Sorts the list of tuples by the element at index 1 (the country code)
+ sorted_by_country = sorted(metro_data, key=itemgetter(1))
+ ```
+
+- **`attrgetter(attr)`:** Creates a function that extracts attributes by name using the `.` operator.
+
+```python
+from operator import attrgetter
+ # Sorts a list of custom objects by their 'name' attribute
+sorted_objects = sorted(my_objects, key=attrgetter('name'))
+```
+
+- **`methodcaller(name, *args)`:** Creates a function that calls a specific method on its operand, optionally passing given arguments.
+
+
+---
+## 2. Freezing Arguments with `functools.partial`
+
+The `functools` module brings together higher-order functions that interact with other functions. The most widely used of these (aside from `reduce`) is **`partial`**.
+
+### What is Partial Application?
+
+`functools.partial` is a higher-order function that takes a callable (like a function) and "freezes" some of its arguments, returning a brand-new callable that requires fewer arguments to run.
+
+### Why is it Useful?
+
+It is extremely useful when you have a function that requires multiple arguments, but an API or higher-order function (like `map` or a UI callback) only allows you to pass a function that takes fewer arguments.
+#### Code Anatomy
+
+Imagine you want to multiply every item in a list by 3. The `operator.mul` function takes _two_ arguments, but `map` only passes _one_ argument to the function from the sequence.
+
+You can use `partial` to freeze the first argument of `mul` to `3`:
+
+```python
+from operator import mul
+from functools import partial
+
+# Create a new function that multiplies any input by 3
+triple = partial(mul, 3)
+
+print(triple(7))  # Output: 21
+
+# Now it can be passed to map!
+results = list(map(triple, range(1, 10)))
+# Output: [3, 6, 9, 12, 15, 18, 21, 24, 27]
+```
+
+---
+
+## Chapter 7 Summary
+
+This chapter explored the concept of **functions as first-class objects** in Python. Here are the key takeaways:
+
+- **First-Class Entities:** Functions can be created, assigned to variables, passed to other functions, and returned from functions just like integers or strings.
+
+- **Higher-Order Functions:** Functions like `sorted`, `min`, `max`, `map`, and `filter` accept other functions as arguments (usually via the `key` parameter).
+
+- **Modern Replacements:** `map`, `filter`, and `reduce` are largely superseded by list comprehensions, generator expressions, and the `sum` built-in.
+
+- **Lambdas:** Anonymous functions created with the `lambda` keyword are restricted to a single expression. Use them sparingly for simple, throwaway callbacks.
+
+- **Callables:** The `()` call operator works on nine different flavors of objects, including user-defined classes that implement the `__call__` dunder method.
+
+- **Parameter Syntax:** Python allows fine-grained control over how functions accept arguments using `*` (keyword-only boundaries) and `/` (positional-only boundaries).
+
+- **Functional Packages:** The `operator` module provides ready-to-use C-optimized functions for basic logic and data extraction, while `functools.partial` allows you to adapt function signatures on the fly.
+---
